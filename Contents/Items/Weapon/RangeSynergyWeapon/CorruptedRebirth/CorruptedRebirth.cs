@@ -160,25 +160,31 @@ public class CorruptedRebirthModPlayer : ModPlayer {
 		if (item.type == ModContent.ItemType<CorruptedRebirth>()) {
 			if (counter >= 10) {
 				Vector2 spawnPos = Player.Center + Main.rand.NextVector2CircularEdge(100, 100);
-				Color greeen = new(0, 255, 0, 0);
-				for (int i = 0; i < 400; i++) {
-					int dust = Dust.NewDust(spawnPos, 0, 0, DustID.WhiteTorch, 0, 0, 0, greeen, Main.rand.NextFloat(1.5f, 1.72f));
-					Main.dust[dust].velocity = Main.rand.NextVector2CircularEdge(17, 17);
-					Main.dust[dust].noGravity = true;
-				}
-				for (int i = 0; i < 300; i++) {
-					int dust = Dust.NewDust(spawnPos, 0, 0, DustID.GemEmerald, 0, 0, 0, greeen, Main.rand.NextFloat(1.5f, 1.72f));
-					Main.dust[dust].velocity = Main.rand.NextVector2CircularEdge(15, 15);
-					Main.dust[dust].noGravity = true;
-				}
-				for (int i = 0; i < 200; i++) {
-					int dust = Dust.NewDust(spawnPos, 0, 0, DustID.GemEmerald, 0, 0, 0, greeen, Main.rand.NextFloat(1.5f, 1.72f));
-					Main.dust[dust].velocity = Main.rand.NextVector2CircularEdge(10, 10);
-					Main.dust[dust].noGravity = true;
+				if (!Main.dedServ)
+				{
+					Color green = new(0, 255, 0, 0);
+					for (int i = 0; i < 400; i++) {
+						int dust = Dust.NewDust(spawnPos, 0, 0, DustID.WhiteTorch, 0, 0, 0, green, Main.rand.NextFloat(1.5f, 1.72f));
+						Main.dust[dust].velocity = Main.rand.NextVector2CircularEdge(17, 17);
+						Main.dust[dust].noGravity = true;
+					}
+					for (int i = 0; i < 300; i++) {
+						int dust = Dust.NewDust(spawnPos, 0, 0, DustID.GemEmerald, 0, 0, 0, green, Main.rand.NextFloat(1.5f, 1.72f));
+						Main.dust[dust].velocity = Main.rand.NextVector2CircularEdge(15, 15);
+						Main.dust[dust].noGravity = true;
+					}
+					for (int i = 0; i < 200; i++) {
+						int dust = Dust.NewDust(spawnPos, 0, 0, DustID.GemEmerald, 0, 0, 0, green, Main.rand.NextFloat(1.5f, 1.72f));
+						Main.dust[dust].velocity = Main.rand.NextVector2CircularEdge(10, 10);
+						Main.dust[dust].noGravity = true;
+					}
 				}
 				counter = 0;
 				activeFlamethrower = ModUtils.ToSecond(5);
-				ModObject.NewModObject(spawnPos, Vector2.Zero, ModObject.GetModObjectType<CorruptedRebirthBowObject>());
+				
+				if (Main.netMode != NetmodeID.MultiplayerClient)
+					ModObject.NewModObject(Player.GetSource_FromThis(), spawnPos, Vector2.Zero, 
+						ModObject.GetModObjectType<CorruptedRebirthBowObject>());
 			}
 		}
 		if (activeFlamethrower > 0) {

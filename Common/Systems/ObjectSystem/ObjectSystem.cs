@@ -2,7 +2,10 @@
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Terraria;
+using Terraria.DataStructures;
+using Terraria.ID;
 using Terraria.ModLoader;
 
 namespace Roguelike.Common.Systems.ObjectSystem;
@@ -69,8 +72,12 @@ public class ObjectSystem : ModSystem {
 				else {
 					modobject.OnKill();
 					modobject.active = false;
-					continue;
 				}
+			}
+
+			if (Main.netMode == NetmodeID.Server && modobject.netUpdate) {
+				modobject.SendData();
+				modobject.netUpdate = false;
 			}
 		}
 	}
@@ -143,6 +150,10 @@ public class ModObject : IModType, ILoadable {
 	/// </summary>
 	public int Type = -1;
 	public float rotation = 0;
+	/// <summary>
+	/// Net update request for this Mod Object, when this is set to true the Mod Object will be synced on the network.
+	/// </summary>
+	public bool netUpdate = false;
 	public Mod Mod { get; internal set; }
 	public string Name => GetType().Name;
 	public string FullName => $"{Mod?.Name ?? "Terraria"}/{Name}";
@@ -150,30 +161,86 @@ public class ModObject : IModType, ILoadable {
 	/// Use this to create new Mod Object in the world.<br/>
 	/// The position that this mod object use to be created is World Coord, not tile coord
 	/// </summary>
+	/// <param name="spawnSource"></param>
 	/// <param name="position"></param>
 	/// <param name="velocity"></param>
 	/// <param name="type"></param>
 	/// <returns></returns>
-	public static ModObject NewModObject(Vector2 position, Vector2 velocity, int type) {
-		int whoAmI = -1;
-		for (int i = 0; i < ObjectSystem.MaxObjects; i++) {
-			if (ObjectSystem.Objects[i] == null || !ObjectSystem.Objects[i].active) {
-				whoAmI = i;
-				break;
+	public static int NewModObject(IEntitySource spawnSource, Vector2 position, Vector2 velocity, int type) {
+		// Only allow spawning ModObjects on the server
+		if (Main.netMode == NetmodeID.MultiplayerClient) {
+			return -1;
+		}
+
+		int index = -1;
+		
+		// Search for an empty slot in the object array
+		for (int i = 0; i < ObjectSystem.Objects.Length; i++) {
+			// Get the object on the current slot
+			var modObject = ObjectSystem.Objects[i];
+
+			// Check if the object is already active
+			if (modObject is { active: true }) {
+				continue;
 			}
+
+			// Not active, save the free index
+			index = i;
+			break;
 		}
-		if (whoAmI == ObjectSystem.MaxObjects || whoAmI == -1) {
-			whoAmI = 0;
+		
+		// No free slot was found, replace the oldest modObject
+		if (index == -1) {
+			index = FindOldestModObject();
 		}
-		ObjectSystem.Objects[whoAmI] = ObjectSystem.GetModObject(type);
-		ModObject obj = ObjectSystem.Objects[whoAmI];
-		obj.SetDefaults();
-		obj.active = true;
-		obj.position = position;
-		obj.velocity = velocity;
-		obj.whoAmI = whoAmI;
-		return obj;
+		
+		ObjectSystem.Objects[index] = ObjectSystem.GetModObject(type);
+		var newModObject = ObjectSystem.Objects[index];
+		newModObject.SetDefaults();
+		newModObject.active = true;
+		newModObject.position = position;
+		newModObject.velocity = velocity;
+		newModObject.whoAmI = index;
+		newModObject.OnSpawn(spawnSource);
+		
+		// When this code runs on the server, sync the ModObject on the network
+		if (Main.dedServ) {
+			newModObject.SendData();
+		}
+
+		// Pull down the netUpdate bool
+		newModObject.netUpdate = false;
+		
+		// Return the index
+		return index;
 	}
+
+	public static int FindOldestModObject() {
+		int whoAmI = ObjectSystem.MaxObjects;
+		int timeLeft = int.MaxValue;
+
+		for (int i = 0; i < ObjectSystem.Objects.Length; i++) {
+			// Get the object on the current slot
+			var modObject = ObjectSystem.Objects[i];
+			
+			// Slot is free, instantly return
+			if (modObject == null) {
+				return i;
+			}
+
+			// Check if the time is lower
+			if (modObject.timeLeft >= timeLeft) {
+				continue;
+			}
+
+			// Assign the new time and whoAmI index
+			whoAmI = modObject.whoAmI;
+			timeLeft = modObject.timeLeft;
+		}
+
+		return whoAmI;
+	}
+
 	public static int GetModObjectType<T>() where T : ModObject {
 		return ModContent.GetInstance<T>().Type;
 	}
@@ -187,6 +254,11 @@ public class ModObject : IModType, ILoadable {
 	public virtual void SetDefaults() {
 
 	}
+
+	public virtual void OnSpawn(IEntitySource source) {
+		
+	}
+
 	/// <summary>
 	/// Kill the object from active<br/>
 	/// Active flag is actually a marker that is used to make sure that the object will be killed.
@@ -195,6 +267,7 @@ public class ModObject : IModType, ILoadable {
 		OnKill();
 		active = false;
 		timeLeft = 0;
+		netUpdate = true;
 	}
 	/// <summary>
 	/// The AI of the object, can be used to spawning NPC, projectile etc
@@ -341,4 +414,35 @@ public class ModObject : IModType, ILoadable {
 	public Vector2 DirectionTo(Vector2 Destination) => Vector2.Normalize(Destination - Center);
 	public Vector2 DirectionFrom(Vector2 Source) => Vector2.Normalize(Center - Source);
 	public bool WithinRange(Vector2 Target, float MaxRange) => Vector2.DistanceSquared(Center, Target) <= MaxRange * MaxRange;
+
+	public void SendData() {
+		try {
+			// Get a new ModPacket for the data
+			var packet = Mod.GetPacket();
+			packet.Write((byte)Roguelike.MessageType.SyncModObject);
+			packet.Write((ushort)whoAmI);
+			packet.Write(active);
+			packet.Write((short)Type);
+			packet.WriteVector2(position);
+			packet.WriteVector2(velocity);
+			packet.Write(rotation);
+			
+			using var binarySteam = new MemoryStream();
+			using var binaryWriter = new BinaryWriter(binarySteam);
+
+			SendExtraData(binaryWriter);
+			
+			packet.Write(binarySteam.ToArray());
+			packet.Send();
+		}
+		catch { /* Don't care */ }
+	}
+
+	public virtual void SendExtraData(BinaryWriter writer) {
+		
+	}
+
+	public virtual void ReceiveExtraData(BinaryReader reader) {
+		
+	}
 }

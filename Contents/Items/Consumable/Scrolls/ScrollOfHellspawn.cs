@@ -24,7 +24,9 @@ class ScrollOfHellspawn : ModItem {
 			if (distance.Length() > 350f) {
 				limitedSpawningPosition = player.Center - distance.SafeNormalize(Vector2.Zero) * 350;
 			}
-			ModObject.NewModObject(limitedSpawningPosition, Vector2.Zero, ModObject.GetModObjectType<HellSpawnObject>());
+			
+			if (Main.netMode != NetmodeID.MultiplayerClient)
+				ModObject.NewModObject(Item.GetSource_FromThis(), limitedSpawningPosition, Vector2.Zero, ModObject.GetModObjectType<HellSpawnObject>());
 		}
 		return true;
 	}

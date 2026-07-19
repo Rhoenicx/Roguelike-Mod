@@ -1,4 +1,5 @@
-﻿using Terraria;
+﻿using Microsoft.Xna.Framework;
+using Terraria;
 using System.IO;
 using Terraria.ID;
 using Roguelike.Common.Systems.ArtifactSystem;
@@ -6,6 +7,7 @@ using Roguelike.Contents.Items.Consumable.Potion;
 using Roguelike.Contents.Items.Consumable.SpecialReward;
 using Roguelike.Contents.Transfixion.Artifacts;
 using Roguelike.Common.Global;
+using Roguelike.Common.Systems.ObjectSystem;
 using Roguelike.Contents.Items.NoneSynergy;
 using Roguelike.Contents.Transfixion.Perks;
 using Roguelike.Contents.Transfixion.Skill;
@@ -21,7 +23,9 @@ namespace Roguelike {
 			Perk,
 			Skill,
 			Artifact,
-			PlayerStatsHandle
+			PlayerStatsHandle,
+			SyncModObject,
+			RequestModObject
 		}
 		public override void HandlePacket(BinaryReader reader, int whoAmI) {
 			MessageType msgType = (MessageType)reader.ReadByte();
@@ -90,6 +94,59 @@ namespace Roguelike {
 						statplayer.SyncPlayer(-1, whoAmI, false);
 					}
 					break;
+
+				case MessageType.SyncModObject: {
+					// Read all the data from the packet
+					ushort index = reader.ReadUInt16();
+					bool active = reader.ReadBoolean();
+					short type = reader.ReadInt16();
+					var posistion = reader.ReadVector2();
+					var velocity = reader.ReadVector2();
+					float rotation = reader.ReadSingle();
+
+					// Get the object
+					var modObject = ObjectSystem.Objects[index];
+
+					// The object got killed (active on this client but packet says not active)
+					if (modObject.active && !active) {
+						modObject.OnKill();
+						modObject.active = false;
+					}
+
+					// The object is newly created or not of the correct type
+					else if (active && !modObject.active || modObject.Type != type) {
+						ObjectSystem.Objects[index] = ObjectSystem.GetModObject(type);
+						modObject = ObjectSystem.Objects[index];
+						modObject.SetDefaults();
+						modObject.active = true;
+					}
+
+					// Apply the received data to the object
+					modObject.position = posistion;
+					modObject.velocity = velocity;
+					modObject.rotation = rotation;
+
+					// ModObject specific data
+					modObject.ReceiveExtraData(reader);
+				}
+				break;
+
+				case MessageType.RequestModObject: {
+					// Read all the data from the packet
+					var position = reader.ReadVector2();
+					var velocity = reader.ReadVector2();
+					short type = reader.ReadInt16();
+					
+					// Spawn the ModObject (on the server)
+					if (Main.dedServ) {
+						ModObject.NewModObject(
+							null,
+							position,
+							velocity,
+							type);
+					}
+				}
+				break;
 			}
 		}
 	}

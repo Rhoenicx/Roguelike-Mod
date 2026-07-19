@@ -35,14 +35,31 @@ internal class FleshChamberStructure : ModSystem {
 	public Rectangle Pos_structure => ModContent.GetInstance<RogueLikeWorldGen>().GetStructure("FleshChamber");
 	public bool IsWithinRange = false;
 	public override void PostUpdateEverything() {
-		if (!RoguelikeWorldProperty.RoguelikeWorld) {
+		if (!RoguelikeWorldProperty.RoguelikeWorld || Main.dedServ) {
 			return;
 		}
 		var player = Main.LocalPlayer;
 		if (player.Center.IsCloseToPosition(Pos_structure.Center().ToWorldCoordinates(), 1500)) {
 			if (!IsWithinRange) {
 				var worldPos = (Pos_structure.Location + Point_ModObject).ToWorldCoordinates();
-				ModObject.NewModObject(worldPos, Vector2.Zero, ModObject.GetModObjectType<Sealed_Eye>());
+				
+				switch (Main.netMode) {
+					case NetmodeID.SinglePlayer:
+						ModObject.NewModObject(player.GetSource_FromThis(), worldPos, Vector2.Zero, ModObject.GetModObjectType<Sealed_Eye>());
+					break;
+
+					case NetmodeID.MultiplayerClient: {
+						var packet = Mod.GetPacket();
+						packet.Write((byte)Roguelike.MessageType.RequestModObject);
+						packet.WriteVector2(worldPos);
+						packet.WriteVector2(Vector2.Zero);
+						packet.Write((short)ModObject.GetModObjectType<Sealed_Eye>());
+						packet.Send();
+						break;
+					}
+				}
+				
+				
 			}
 			IsWithinRange = true;
 		}

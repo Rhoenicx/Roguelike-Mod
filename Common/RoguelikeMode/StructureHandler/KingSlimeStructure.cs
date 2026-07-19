@@ -35,14 +35,30 @@ internal class KingSlimeStructure : ModSystem {
 	public Rectangle Pos_KSstructure => ModContent.GetInstance<RogueLikeWorldGen>().GetStructure("SlimeChamber");
 	public bool IsWithinRange = false;
 	public override void PostUpdateEverything() {
-		if (!RoguelikeWorldProperty.RoguelikeWorld) {
+		if (!RoguelikeWorldProperty.RoguelikeWorld || Main.dedServ) {
 			return;
 		}
 		var player = Main.LocalPlayer;
 		if (player.Center.IsCloseToPosition(Pos_KSstructure.Center().ToWorldCoordinates(), 1500)) {
 			if (!IsWithinRange) {
 				var worldPos = (Pos_KSstructure.Location + Point_ModObject_KingSlime).ToWorldCoordinates();
-				ModObject.NewModObject(worldPos, Vector2.Zero, ModObject.GetModObjectType<Sealed_KingSlime>());
+				
+				switch (Main.netMode) {
+					case NetmodeID.SinglePlayer:
+						ModObject.NewModObject(player.GetSource_FromThis(),worldPos, Vector2.Zero, 
+							ModObject.GetModObjectType<Sealed_KingSlime>());
+					break;
+
+					case NetmodeID.MultiplayerClient: {
+						var packet = Mod.GetPacket();
+						packet.Write((byte)Roguelike.MessageType.RequestModObject);
+						packet.WriteVector2(worldPos);
+						packet.WriteVector2(Vector2.Zero);
+						packet.Write((short)ModObject.GetModObjectType<Sealed_KingSlime>());
+						packet.Send();
+						break;
+					}
+				}
 			}
 			IsWithinRange = true;
 		}

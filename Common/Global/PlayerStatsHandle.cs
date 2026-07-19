@@ -1,4 +1,5 @@
-﻿using Microsoft.Xna.Framework;
+﻿using JetBrains.Annotations;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Roguelike.Common.Systems.ObjectSystem;
 using Roguelike.Common.Utils;
@@ -763,9 +764,13 @@ public class PlayerStatsHandle : ModPlayer {
 		}
 		if (listItem != null && listItem.Count > 0) {
 			int typeItem = listItem[0].type;
-			ModObject modobject = ModObject.NewModObject(Player.Center, Vector2.Zero, ModObject.GetModObjectType<AccessoryVisualModObject>());
-			AccessoryVisualModObject accobject = (AccessoryVisualModObject)modobject;
-			accobject.AccType = typeItem;
+			
+			ModObject.NewModObject(
+				new EntitySource_AccessoryVisual(typeItem, Player),
+				Player.Center,
+				Vector2.Zero,
+				ModObject.GetModObjectType<AccessoryVisualModObject>());
+			
 			listItem[0].TurnToAir();
 			listItem.RemoveAt(0);
 			Player.Heal(Player.statLifeMax2 / 2);
@@ -1202,6 +1207,13 @@ public class AccessoryVisualModObject : ModObject {
 	public override void SetDefaults() {
 		timeLeft = 120;
 	}
+
+	public override void OnSpawn(IEntitySource source) {
+		if (source is EntitySource_AccessoryVisual sourceAccessoryVisual) {
+			AccType = sourceAccessoryVisual.AccType;
+		}
+	}
+
 	public override void AI() {
 		velocity = -Vector2.UnitY * 2;
 		alpha = (int)MathHelper.Lerp(0, 255, timeLeft / 120f);
@@ -1220,6 +1232,12 @@ public class AccessoryVisualModObject : ModObject {
 		spritebatch.Draw(texture, drawPos, null, color, 0, origin, 1f, SpriteEffects.None, 0);
 	}
 }
+
+public class EntitySource_AccessoryVisual(int accType, Entity entity, string context = null)
+	: EntitySource_Parent(entity, context) {
+	public int AccType { get; } = accType;
+}
+
 /// <summary>
 /// This is for the second life mechanic
 /// </summary>

@@ -33,7 +33,24 @@ internal class TestCustomLootDropModTile : ModTile {
 	}
 	public override bool RightClick(int i, int j) {
 		WorldGen.KillTile(i, j, noItem: true);
-		ModObject.NewModObject(new Vector2(i, j).ToWorldCoordinates(), -Vector2.UnitY * 2, ModObject.GetModObjectType<TileDropModObject>());
+
+		switch (Main.netMode) {
+			case NetmodeID.SinglePlayer:
+				ModObject.NewModObject(null, new Vector2(i, j).ToWorldCoordinates(), -Vector2.UnitY * 2,
+					ModObject.GetModObjectType<TileDropModObject>());
+			break;
+
+			case NetmodeID.MultiplayerClient: {
+				var packet = Mod.GetPacket();
+				packet.Write((byte)Roguelike.MessageType.RequestModObject);
+				packet.WriteVector2(new Vector2(i, j).ToWorldCoordinates());
+				packet.WriteVector2(-Vector2.UnitY * 2);
+				packet.Write((short)ModObject.GetModObjectType<TileDropModObject>());
+				packet.Send();
+				break;
+			}
+		}
+
 		return base.RightClick(i, j);
 	}
 }
